@@ -133,7 +133,12 @@ module gen
 	input         SPR_GRID_EN,
 
 	output [23:0] DBG_M68K_A,
-	output [23:0] DBG_VA_A
+	output [23:0] DBG_VA_A,
+
+	// RetroAchievements BRAM read interface (port B of 68K Work RAM)
+	input  [14:0] RA_BRAM_ADDR,  // 15-bit word address from RA module
+	output  [7:0] RA_BRAM_U,     // high byte (from ram68k_u port B)
+	output  [7:0] RA_BRAM_L      // low byte (from ram68k_l port B)
 );
 
 reg reset;
@@ -273,8 +278,9 @@ dpram #(15) ram68k_u
 	.wren_a(~RAM_N & ~RNW & ~UDS_N),
 	.q_a(WRAM_Q[15:8]),
 
-	.address_b(ram_rst_a[15:1]),
-	.wren_b(LOADING)
+	.address_b(LOADING ? ram_rst_a[15:1] : RA_BRAM_ADDR),
+	.wren_b(LOADING),
+	.q_b(RA_BRAM_U)
 );
 
 dpram #(15) ram68k_l
@@ -285,8 +291,9 @@ dpram #(15) ram68k_l
 	.wren_a(~RAM_N & ~RNW & ~LDS_N),
 	.q_a(WRAM_Q[7:0]),
 
-	.address_b(ram_rst_a[15:1]),
-	.wren_b(LOADING)
+	.address_b(LOADING ? ram_rst_a[15:1] : RA_BRAM_ADDR),
+	.wren_b(LOADING),
+	.q_b(RA_BRAM_L)
 );
 
 

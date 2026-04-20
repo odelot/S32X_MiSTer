@@ -16,4 +16,6 @@ set_global_assignment -name VHDL_FILE rtl/snd_mix.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cofi.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/cheatcodes.sv
 set_global_assignment -name SDC_FILE S32X.sdc
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ra_ram_mirror_s32x.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ddram_arb_s32x.sv
 set_global_assignment -name SYSTEMVERILOG_FILE S32X.sv

@@ -663,7 +663,12 @@ gen gen
 	.BGB_EN(VDP_BGB_EN),
 	.SPR_EN(VDP_SPR_EN),
 	.BG_GRID_EN(VDP_BG_GRID_EN),
-	.SPR_GRID_EN(VDP_SPR_GRID_EN)
+	.SPR_GRID_EN(VDP_SPR_GRID_EN),
+
+	// RetroAchievements BRAM interface
+	.RA_BRAM_ADDR(ra_bram_addr),
+	.RA_BRAM_U(ra_bram_u),
+	.RA_BRAM_L(ra_bram_l)
 );
 
 assign GEN_MEM_BUSY = !GEN_RAS2_N                  ? 1'b0 : 
@@ -861,25 +866,128 @@ end
 
 reg use_sdr = 0;
 
+// --- RetroAchievements: BRAM wires ---
+wire [14:0] ra_bram_addr;
+wire  [7:0] ra_bram_u;
+wire  [7:0] ra_bram_l;
+
+// --- RetroAchievements: DDRAM toggle wires ---
+wire [28:0] ra_ddram_wr_addr;
+wire [63:0] ra_ddram_wr_din;
+wire  [7:0] ra_ddram_wr_be;
+wire        ra_ddram_wr_req;
+wire        ra_ddram_wr_ack;
+wire [28:0] ra_ddram_rd_addr;
+wire        ra_ddram_rd_req;
+wire        ra_ddram_rd_ack;
+wire [63:0] ra_ddram_rd_dout;
+
+// --- Intermediate wires: ddram module <-> arbiter ---
+wire        ddr_int_busy;
+wire  [7:0] ddr_int_burstcnt;
+wire [28:0] ddr_int_addr;
+wire [63:0] ddr_int_dout;
+wire        ddr_int_dout_ready;
+wire        ddr_int_rd;
+wire [63:0] ddr_int_din;
+wire  [7:0] ddr_int_be;
+wire        ddr_int_we;
+
 wire ddr_busy;
 wire [31:0] ddr_do;
 ddram ddram
 (
-	.*,
+.*,
 
-	.clk(clk_ram),
+.clk(clk_ram),
 
-	.mem_addr({10'b0000000000,S32X_SDR_A}),
-	.mem_dout(ddr_do),
-	.mem_din({16'h0000,S32X_SDR_DO}),
-	.mem_rd(S32X_SDR_CS & S32X_SDR_RD),
-	.mem_wr({2'b00,{2{S32X_SDR_CS}} & S32X_SDR_WE}),
-	.mem_chan(0),
-	.mem_16b(1),
-	.mem_busy(ddr_busy)
+// Route DDRAM bus through RA arbiter (explicit overrides take priority over .*)
+.DDRAM_BUSY(ddr_int_busy),
+.DDRAM_BURSTCNT(ddr_int_burstcnt),
+.DDRAM_ADDR(ddr_int_addr),
+.DDRAM_DOUT(ddr_int_dout),
+.DDRAM_DOUT_READY(ddr_int_dout_ready),
+.DDRAM_RD(ddr_int_rd),
+.DDRAM_DIN(ddr_int_din),
+.DDRAM_BE(ddr_int_be),
+.DDRAM_WE(ddr_int_we),
+
+.mem_addr({10'b0000000000,S32X_SDR_A}),
+.mem_dout(ddr_do),
+.mem_din({16'h0000,S32X_SDR_DO}),
+.mem_rd(S32X_SDR_CS & S32X_SDR_RD),
+.mem_wr({2'b00,{2{S32X_SDR_CS}} & S32X_SDR_WE}),
+.mem_chan(0),
+.mem_16b(1),
+.mem_busy(ddr_busy)
 );
 assign S32X_SDR_DI   = ddr_do[15:0];
 assign S32X_SDR_WAIT = ddr_busy;
+// DDRAM_CLK is driven through .* from ddram module (assign DDRAM_CLK = clk inside ddram.sv)
+
+// --- DDRAM arbiter: ddram module (primary) + RA mirror (secondary) ---
+ddram_arb_s32x ra_ddram_arb
+(
+.clk(clk_ram),
+
+// Physical DDRAM
+.PHY_BUSY(DDRAM_BUSY),
+.PHY_BURSTCNT(DDRAM_BURSTCNT),
+.PHY_ADDR(DDRAM_ADDR),
+.PHY_DOUT(DDRAM_DOUT),
+.PHY_DOUT_READY(DDRAM_DOUT_READY),
+.PHY_RD(DDRAM_RD),
+.PHY_DIN(DDRAM_DIN),
+.PHY_BE(DDRAM_BE),
+.PHY_WE(DDRAM_WE),
+
+// ddram module interface (primary master)
+.DDR_BUSY(ddr_int_busy),
+.DDR_BURSTCNT(ddr_int_burstcnt),
+.DDR_ADDR(ddr_int_addr),
+.DDR_DOUT(ddr_int_dout),
+.DDR_DOUT_READY(ddr_int_dout_ready),
+.DDR_RD(ddr_int_rd),
+.DDR_DIN(ddr_int_din),
+.DDR_BE(ddr_int_be),
+.DDR_WE(ddr_int_we),
+
+// RA mirror (secondary, toggle req/ack from clk_sys)
+.ra_wr_addr(ra_ddram_wr_addr),
+.ra_wr_din(ra_ddram_wr_din),
+.ra_wr_be(ra_ddram_wr_be),
+.ra_wr_req(ra_ddram_wr_req),
+.ra_wr_ack(ra_ddram_wr_ack),
+.ra_rd_addr(ra_ddram_rd_addr),
+.ra_rd_req(ra_ddram_rd_req),
+.ra_rd_ack(ra_ddram_rd_ack),
+.ra_rd_dout(ra_ddram_rd_dout)
+);
+
+// --- RA RAM Mirror: reads 68K BRAM + 32X SDRAM, writes to DDRAM ---
+ra_ram_mirror_s32x ra_mirror
+(
+.clk(clk_sys),
+.reset(reset),
+.vblank(vblank),
+
+.bram_addr(ra_bram_addr),
+.bram_u_dout(ra_bram_u),
+.bram_l_dout(ra_bram_l),
+
+.ddram_wr_addr(ra_ddram_wr_addr),
+.ddram_wr_din(ra_ddram_wr_din),
+.ddram_wr_be(ra_ddram_wr_be),
+.ddram_wr_req(ra_ddram_wr_req),
+.ddram_wr_ack(ra_ddram_wr_ack),
+.ddram_rd_addr(ra_ddram_rd_addr),
+.ddram_rd_req(ra_ddram_rd_req),
+.ddram_rd_ack(ra_ddram_rd_ack),
+.ddram_rd_dout(ra_ddram_rd_dout),
+
+.active(),
+.dbg_frame_counter()
+);
 
 
 wire sdr_busy[4];
