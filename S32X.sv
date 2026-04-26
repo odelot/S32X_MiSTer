@@ -260,11 +260,9 @@ localparam CONF_STR = {
 	"O9,Auto Region,Header,Disabled;",
 	"D2ORS,Priority,US>EU>JP,EU>US>JP,US>JP>EU,JP>US>EU;",
 	"-;",
-	/*
-	"C,Cheats;",
-	"H1OO,Cheats Enabled,Yes,No;",
+	"H6C,Cheats;",
+	"H1H6OO,Cheats Enabled,Yes,No;",
 	"-;",
-	*/
 	"D0RG,Load Backup RAM;",
 	"D0RH,Save Backup RAM;",
 	"D0OD,Autosave,Off,On;",
@@ -371,7 +369,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.status(status),
 	.status_in({status[63:8],region_req,status[5:0]}),
 	.status_set(region_set),
-	.status_menumask({en216p,!gun_mode,1'b1,status[9],~gg_available,~bk_ena}),
+	.status_menumask({hardcore,en216p,!gun_mode,1'b1,status[9],~gg_available,~bk_ena}),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_index(ioctl_index),
@@ -401,6 +399,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 wire [1:0] gun_mode = status[41:40];
 wire       gun_btn_mode = status[42];
+wire       hardcore = status[56];
 
 wire code_index = &ioctl_index;
 wire rom_download = ioctl_download & ~code_index;
@@ -654,7 +653,7 @@ gen gen
 
 	.MEM_RDY(~GEN_MEM_BUSY),
 	.GG_RESET(code_download && ioctl_wr && !ioctl_addr),
-	.GG_EN(status[24]),
+	.GG_EN(status[24] & ~hardcore),
 	.GG_CODE({~gg_code[95] & gg_code[128], gg_code[127:0]}),
 	.GG_AVAILABLE(gg_available),
 	
